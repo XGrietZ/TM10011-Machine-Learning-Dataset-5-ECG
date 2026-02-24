@@ -1,8 +1,17 @@
 import pandas as pd
 import os
+import zipfile
 
 
 def load_data():
-    this_directory = os.path.dirname(os.path.abspath(__file__))
-    data = pd.read_csv(os.path.join(this_directory, 'ecg_data/ecg_data.csv'), index_col=0)
+    ecg_directory = os.path.dirname(os.path.abspath(__file__))
+    data_directory = os.path.join(ecg_directory, 'ecg_data')
+    data_file = os.path.join(data_directory, 'ecg_data.csv')
+
+    if (not os.path.exists(data_file)):
+        print('Data file not found. Downloading and extracting data...')
+        zip_file = os.path.join(ecg_directory, 'ecg_data.zip')
+        zipfile.ZipFile(zip_file).extractall(ecg_directory)
+
+    data = pd.read_csv(data_file, index_col=0)
     return data

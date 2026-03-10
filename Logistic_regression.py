@@ -2,7 +2,7 @@
 #-----------------------------------
 # 0. Imports
 #-----------------------------------
-
+# %%
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -32,32 +32,43 @@ from sklearn.base import clone
 # 1. Load data
 #-----------------------------------
 
-CSV_PATHS = ["ecg_data/ecg_data.csv"]
+# CSV_PATHS = ["ecg_data/ecg_data.csv"]
 
-df = None
-for p in CSV_PATHS:
-    try:
-        df = pd.read_csv(p)
-        print(f"Loaded: {p}")
-        break
-    except FileNotFoundError:
-        pass
+# df = None
+# for p in CSV_PATHS:
+#     try:
+#         df = pd.read_csv(p)
+#         print(f"Loaded: {p}")
+#         break
+#     except FileNotFoundError:
+#         pass
 
-if df is None:
-    raise FileNotFoundError("Could not find ecg_data.csv. Update CSV_PATHS with the correct path.")
+# if df is None:
+#     raise FileNotFoundError("Could not find ecg_data.csv. Update CSV_PATHS with the correct path.")
 
-# Drop index column if present
-if "Unnamed: 0" in df.columns:
-    df = df.drop(columns=["Unnamed: 0"])
+# # Drop index column if present
+# if "Unnamed: 0" in df.columns:
+#     df = df.drop(columns=["Unnamed: 0"])
 
-if "label" not in df.columns:
-    raise ValueError("Expected a column named 'label' in the CSV.")
+# if "label" not in df.columns:
+#     raise ValueError("Expected a column named 'label' in the CSV.")
 
-X = df.drop(columns=["label"])
-y = df["label"].astype(int)
+# X = df.drop(columns=["label"])
+# y = df["label"].astype(int)
 
-print("\nDataset shape:", X.shape)
-print("Label distribution:\n", y.value_counts())
+# print("\nDataset shape:", X.shape)
+# print("Label distribution:\n", y.value_counts())
+
+from ecg.load_data import load_data
+
+df = load_data()
+df = pd.read_csv('ecg\ecg_data\ecg_data.csv',index_col=0)
+
+X = df.iloc[:,:-1]
+y = df.iloc[:,-1]
+
+X_train, X_test, y_train, y_test = model_selection.train_test_split(X,y, test_size=0.2, random_state=42, stratify=y)
+
 
 #%%
 #-----------------------------------

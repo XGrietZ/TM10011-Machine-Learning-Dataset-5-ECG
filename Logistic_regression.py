@@ -32,19 +32,13 @@ from sklearn.base import clone
 # 1. Load data
 #-----------------------------------
 
-# CSV_PATHS = ["ecg_data/ecg_data.csv"]
+from ecg.load_data import load_data
 
-# df = None
-# for p in CSV_PATHS:
-#     try:
-#         df = pd.read_csv(p)
-#         print(f"Loaded: {p}")
-#         break
-#     except FileNotFoundError:
-#         pass
+data = load_data()
+print(f'The number of samples: {len(data.index)}')
+print(f'The number of columns: {len(data.columns)}')
 
-# if df is None:
-#     raise FileNotFoundError("Could not find ecg_data.csv. Update CSV_PATHS with the correct path.")
+df = pd.read_csv('ecg\ecg_data\ecg_data.csv',index_col=0)
 
 # # Drop index column if present
 # if "Unnamed: 0" in df.columns:
@@ -121,7 +115,6 @@ pipeline = Pipeline([
     ('classifier', model)
     
 ])
-
 
 # %%
 #-----------------------------------
@@ -210,16 +203,51 @@ plt.show()
 # 8. Hyperparameter tuning with graphical progress bar
 #-----------------------------------
 
+# param_grid = {
+#     'preprocessing__scaler': [
+#         StandardScaler(),
+#         RobustScaler(),
+#         MinMaxScaler(),
+#         'passthrough'
+#     ],
+#     'classifier__C': [0.001, 0.01, 0.1, 1, 10, 100],
+#     'classifier__penalty': ['l1', 'l2'],
+#     'classifier__solver': ['liblinear']
+#     'feature_selection__pca__n_components': [
+#     20, 50, 100, 200, 0.95
+#     ],
+#     'feature_selection__pca__svd_solver': [
+#     'auto',
+#     'randomized'
+#     ]
+# }
 param_grid = {
     'preprocessing__scaler': [
         StandardScaler(),
         RobustScaler(),
         MinMaxScaler(),
-        'passthrough'
     ],
-    'classifier__C': [0.01, 0.1, 1, 10],
-    'classifier__penalty': ['l1', 'l2'],
-    'classifier__solver': ['liblinear']
+
+    'preprocessing__log_transform': [
+        'passthrough',
+        FunctionTransformer(np.log1p)
+    ],
+
+    'feature_selection__pca__n_components': [
+        80, 160, 0.93, 0.95
+    ],
+
+    'classifier__C': [
+        0.001, 0.01, 0.1, 1, 10
+    ],
+
+    'classifier__penalty': [
+        'l1', 'l2'
+    ],
+
+    'classifier__solver': [
+        'liblinear', 'saga'
+    ]
 }
 
 param_list = list(ParameterGrid(param_grid))

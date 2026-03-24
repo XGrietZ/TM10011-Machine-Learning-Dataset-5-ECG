@@ -103,7 +103,7 @@ from sklearn.metrics import accuracy_score
 
 #%%
 # soft_voting = VotingClassifier(
-#     estimators=[ ('svc', svc_rbf)],
+#     estimators=[ ('svc', svc)],
 #     voting='soft'
 # )
 
@@ -113,38 +113,42 @@ from sklearn.metrics import accuracy_score
 
 #%%
 # Modellen
-svc_rbf = svm.SVC(kernel = 'rbf', probability=True, class_weight='balanced')
+svc = svm.SVC(kernel = 'poly', probability=True, class_weight='balanced')
 
 # Feature extractors
 pca = PCA(n_components=0.94)
 kbest = SelectKBest()
 
-outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+outer_cv = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
+inner_cv = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
 
 # Pipeline
 pipeline = Pipeline([
     ("scaler", preprocessing.RobustScaler()),
     ("features", "passthrough"),
     ('smote', SMOTE(random_state=42)),
-    ("classifier", svc_rbf)   # placeholder
+    ("classifier", svc)   
 ])
 
 # Inner-loop grid: modelselectie + hyperparameters
 param_grid = [
     {
-        'scaler': [preprocessing.StandardScaler(), preprocessing.RobustScaler(), preprocessing.MinMaxScaler()],
+        'scaler': [preprocessing.RobustScaler(), 
+                   "passthrough", 
+                   preprocessing.RobustScaler(unit_variance = False), 
+                   preprocessing.RobustScaler(unit_variance = True)],
         "features": [pca],
-        "classifier": [svc_rbf],
-        "classifier__C": np.logspace(-2,3,10),
-        "classifier__gamma": np.logspace(-4,1,10)
+        "features__n_components": [0.94,0.97],
+        "classifier": [svc],
+        "classifier__C": [0.001,0.1,1,10],
+        "classifier__gamma": ['scale','auto']
     },
     {
         "features": [kbest],
-        "classifier": [svc_rbf],
-        "classifier__C": np.logspace(-2,3,10),
-        "classifier__gamma": np.logspace(-4,1,10),
-        "features__k": [5, 10, 20]
+        "classifier": [svc],
+        "classifier__C": [0.001,0.1,1,10],
+        "classifier__gamma": ['scale','auto'],
+        "features__k": [20, 50, 100]
     }
     ]
 
@@ -152,7 +156,7 @@ param_grid = [
 grid = GridSearchCV(pipeline, 
                     param_grid, 
                     cv=inner_cv, 
-                    scoring='f1',
+                    scoring='roc_auc',
                     n_jobs=-1,
                     verbose=3
 )

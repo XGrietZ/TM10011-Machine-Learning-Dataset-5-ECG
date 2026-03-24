@@ -91,8 +91,8 @@ inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 pipeline = ImbPipeline([
     ('log_transform', 'passthrough'),
     ('scaler', RobustScaler()),
-    ('pca', PCA(n_components=0.94)),
     ('smote', SMOTE(random_state=42)),
+    ('pca', PCA(n_components=0.94)),
     ('classifier', KNeighborsClassifier())
 ])
 

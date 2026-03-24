@@ -2,6 +2,8 @@
 # -----------------------------------
 # 0. Imports
 # -----------------------------------
+from ecg.load_data import load_data
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -36,7 +38,6 @@ from sklearn.base import clone
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
 
-
 #%%
 #-----------------------------------
 # 1. Load data
@@ -60,7 +61,6 @@ y = df["label"].astype(int)
 print("\nDataset shape:", X.shape)
 print("Label distribution:\n", y.value_counts())
 
-
 #%%
 #-----------------------------------
 # 2. Train/Test split (hold-out)
@@ -76,14 +76,12 @@ X_train_full, X_test_final, y_train_full, y_test_final = train_test_split(
 print("\nTrain label distribution:\n", y_train_full.value_counts())
 print("Test label distribution:\n", y_test_final.value_counts())
 
-
 #%%
 #-----------------------------------
 # 3. Nested CV setup
 #-----------------------------------
 outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-
 
 #%%
 #-----------------------------------
@@ -98,30 +96,12 @@ pipeline = ImbPipeline([
 ])
 
 param_grid = {
-    'scaler': [
-        StandardScaler(),
-        RobustScaler(),
-    ],
-    'log_transform': [
-        'passthrough',
-        FunctionTransformer(np.log1p, validate=False)
-    ],
-    'smote': [
-        SMOTE(random_state=42),
-        'passthrough' 
-    ],
-    'pca__n_components': [
-        80, 0.93, 0.95
-    ],
-    'classifier__C': [
-        0.001, 0.01, 0.1, 1, 10
-    ],
-    'classifier__penalty': [
-        'l1', 'l2'
-    ],
-    'classifier__solver': [
-        'liblinear', 'saga'
-    ]
+    'log_transform': ['passthrough', FunctionTransformer(np.log1p, validate=False)],
+    'scaler': [ StandardScaler(), RobustScaler(),],
+    'pca__n_components': [80, 0.93, 0.95],
+    'classifier__C': [0.001, 0.01, 0.1, 1, 10],
+    'classifier__penalty': ['l1', 'l2'],
+    'classifier__solver': ['liblinear', 'saga']
 }
 
 param_list = list(ParameterGrid(param_grid))
@@ -278,6 +258,21 @@ plt.title('Precision-Recall Curve (Final Test Set)')
 plt.legend(loc='lower left')
 plt.show()
 
+# Boxplot nested CV performance (Logistic Regression)
+print("Outer fold ROC-AUC scores:")
+print(nested_results_df["outer_roc_auc"])
+
+print("\nMean outer ROC-AUC:", nested_results_df["outer_roc_auc"].mean())
+print("Std outer ROC-AUC:", nested_results_df["outer_roc_auc"].std())
+
+plt.figure(figsize=(6, 4))
+plt.boxplot(nested_results_df["outer_roc_auc"])
+plt.ylabel("ROC AUC")
+plt.title("Nested cross-validation performance (Logistic Regression)")
+plt.grid(True)
+plt.show()
+
+
 
 #%%
 #-----------------------------------
@@ -304,3 +299,56 @@ plt.grid(True)
 plt.show()
 
 #%%
+
+#-----------------------------------
+# Heatmap: mean performance
+#-----------------------------------
+
+mean_values = nested_results_df[[
+    "outer_roc_auc",
+    "outer_f1",
+    "outer_bal_acc",
+    "outer_ap"
+]].mean()
+
+mean_df = pd.DataFrame(mean_values).T
+mean_df.index = ["Logistic Regression"]
+
+plt.figure(figsize=(6, 3))
+sns.heatmap(mean_df, annot=True, fmt=".3f", cmap="viridis")
+
+plt.title("Mean nested CV performance")
+plt.yticks(rotation=0)
+plt.show()
+#-----------------------------------
+# Heatmap: mean ± std
+#-----------------------------------
+
+mean = nested_results_df[[
+    "outer_roc_auc",
+    "outer_f1",
+    "outer_bal_acc",
+    "outer_ap"
+]].mean()
+
+std = nested_results_df[[
+    "outer_roc_auc",
+    "outer_f1",
+    "outer_bal_acc",
+    "outer_ap"
+]].std()
+
+annot_df = pd.DataFrame({
+    col: [f"{mean[col]:.3f} ± {std[col]:.3f}"]
+    for col in mean.index
+})
+
+annot_df.index = ["Logistic Regression"]
+
+plt.figure(figsize=(7, 3))
+sns.heatmap(mean_df, annot=annot_df, fmt="", cmap="viridis")
+
+plt.title("Nested CV performance (mean ± std)")
+plt.yticks(rotation=0)
+plt.show()
+# %%

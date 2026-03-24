@@ -2,6 +2,7 @@
 #-----------------------------------
 # 0. Imports
 #-----------------------------------
+from ecg.load_data import load_data
 
 import numpy as np
 import pandas as pd
@@ -47,7 +48,6 @@ from matplotlib.patches import Rectangle
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
 
-from ecg.load_data import load_data
 
 #%%
 #-----------------------------------
@@ -90,56 +90,11 @@ print("Final test label distribution:\n", y_test_final.value_counts())
 
 #%%
 #-----------------------------------
-# 3. Visualize split structure
+# 3. Nested CV setup
 #-----------------------------------
-def visualize_nested_cv_split(X, X_train_full, X_test_final, outer_cv, inner_cv):
-    n_total = len(X)
-    n_train = len(X_train_full)
-    n_test = len(X_test_final)
-
-    # Example outer fold
-    outer_train_idx, outer_val_idx = next(outer_cv.split(X_train_full, y_train_full))
-    n_outer_train = len(outer_train_idx)
-    n_outer_val = len(outer_val_idx)
-
-    # Example inner fold within outer-train part
-    X_outer_train_example = X_train_full.iloc[outer_train_idx]
-    y_outer_train_example = y_train_full.iloc[outer_train_idx]
-
-    inner_train_idx, inner_val_idx = next(inner_cv.split(X_outer_train_example, y_outer_train_example))
-    n_inner_train = len(inner_train_idx)
-    n_inner_val = len(inner_val_idx)
-
-    fig, ax = plt.subplots(figsize=(12, 5))
-
-    def box(x, y, w, h, text, color="#d9d9d9"):
-        rect = Rectangle((x, y), w, h, edgecolor="black", facecolor=color)
-        ax.add_patch(rect)
-        ax.text(x + w/2, y + h/2, text, ha='center', va='center', fontsize=10)
-
-    box(0.08, 0.82, 0.84, 0.10, f"Full dataset: {n_total} samples")
-    box(0.08, 0.62, 0.56, 0.10, f"Training set: {n_train} samples", "#cfe2f3")
-    box(0.70, 0.62, 0.22, 0.10, f"Test set: {n_test} samples", "#f4cccc")
-
-    box(0.08, 0.42, 0.38, 0.10, f"Outer train fold: {n_outer_train}", "#d9ead3")
-    box(0.50, 0.42, 0.14, 0.10, f"Val fold: {n_outer_val}", "#fff2cc")
-
-    box(0.08, 0.22, 0.24, 0.10, f"Inner train fold: {n_inner_train}", "#d9ead3")
-    box(0.36, 0.22, 0.14, 0.10, f"Val fold: {n_inner_val}", "#fff2cc")
-
-    ax.text(0.67, 0.45, "Outer CV:\nperformance estimation", fontsize=10, va="center")
-    ax.text(0.54, 0.25, "Inner CV:\nhyperparameter tuning", fontsize=10, va="center")
-
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.axis("off")
-    plt.title("Nested cross-validation with final hold-out test set")
-    plt.show()
-
 outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-visualize_nested_cv_split(X, X_train_full, X_test_final, outer_cv, inner_cv)
 
 #%%
 #-----------------------------------
@@ -149,7 +104,6 @@ pipeline = ImbPipeline([
     ('log_transform', 'passthrough'),
     ('scaler', RobustScaler()),
     ('smote', SMOTE(random_state=42)),
-    #('pca', PCA(n_components=0.94)),
     ('classifier', RandomForestClassifier(random_state=42,n_jobs=-1))
 ])
 
@@ -163,6 +117,7 @@ param_grid = {
 
 param_list = list(ParameterGrid(param_grid))
 print(f"Total models: {len(param_list)}")
+print(f"Total fits (with {inner_cv.get_n_splits()}-fold CV): {len(param_list) * inner_cv.get_n_splits()}")
 
 
 #%%

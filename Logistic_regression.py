@@ -5,7 +5,6 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 import seaborn as sns
 import time
 
@@ -15,7 +14,6 @@ from sklearn.decomposition import PCA
 from sklearn.model_selection import (
     train_test_split,
     StratifiedKFold,
-    cross_val_score,
     ParameterGrid,
     GridSearchCV,
     learning_curve
@@ -44,16 +42,12 @@ from imblearn.pipeline import Pipeline as ImbPipeline
 # 1. Load data
 #-----------------------------------
 
-from ecg.load_data import load_data
 data = load_data()
 print(f'The number of samples: {len(data.index)}')
 print(f'The number of columns: {len(data.columns)}')
 
-data = pd.read_csv('ecg/ecg_data/ecg_data.csv',index_col=0)
-df = pd.read_csv('ecg/ecg_data/ecg_data.csv', index_col=0)
+df = pd.DataFrame(data)
 
-
-# Drop index column if present
 if "Unnamed: 0" in df.columns:
     df = df.drop(columns=["Unnamed: 0"])
 
@@ -66,10 +60,11 @@ y = df["label"].astype(int)
 print("\nDataset shape:", X.shape)
 print("Label distribution:\n", y.value_counts())
 
+
 #%%
 #-----------------------------------
 # 2. Train/Test split (hold-out)
-#-----------------------------------   
+#-----------------------------------
 X_train_full, X_test_final, y_train_full, y_test_final = train_test_split(
     X, y,
     test_size=0.20,
@@ -79,60 +74,16 @@ X_train_full, X_test_final, y_train_full, y_test_final = train_test_split(
 )
 
 print("\nTrain label distribution:\n", y_train_full.value_counts())
-print("Test  label distribution:\n", y_test_final.value_counts())
+print("Test label distribution:\n", y_test_final.value_counts())
+
 
 #%%
 #-----------------------------------
-# 3. Visualize split structure
+# 3. Nested CV setup
 #-----------------------------------
-def visualize_nested_cv_split(X, X_train_full, X_test_final, outer_cv, inner_cv):
-    n_total = len(X)
-    n_train = len(X_train_full)
-    n_test = len(X_test_final)
-
-    # Example outer fold
-    outer_train_idx, outer_val_idx = next(outer_cv.split(X_train_full, y_train_full))
-    n_outer_train = len(outer_train_idx)
-    n_outer_val = len(outer_val_idx)
-
-    # Example inner fold within outer-train part
-    X_outer_train_example = X_train_full.iloc[outer_train_idx]
-    y_outer_train_example = y_train_full.iloc[outer_train_idx]
-
-    inner_train_idx, inner_val_idx = next(inner_cv.split(X_outer_train_example, y_outer_train_example))
-    n_inner_train = len(inner_train_idx)
-    n_inner_val = len(inner_val_idx)
-
-    fig, ax = plt.subplots(figsize=(12, 5))
-
-    def box(x, y, w, h, text, color="#d9d9d9"):
-        rect = Rectangle((x, y), w, h, edgecolor="black", facecolor=color)
-        ax.add_patch(rect)
-        ax.text(x + w/2, y + h/2, text, ha='center', va='center', fontsize=10)
-
-    box(0.08, 0.82, 0.84, 0.10, f"Full dataset: {n_total} samples")
-    box(0.08, 0.62, 0.56, 0.10, f"Training set: {n_train} samples", "#cfe2f3")
-    box(0.70, 0.62, 0.22, 0.10, f"Test set: {n_test} samples", "#f4cccc")
-
-    box(0.08, 0.42, 0.38, 0.10, f"Outer train fold: {n_outer_train}", "#d9ead3")
-    box(0.50, 0.42, 0.14, 0.10, f"Val fold: {n_outer_val}", "#fff2cc")
-
-    box(0.08, 0.22, 0.24, 0.10, f"Inner train fold: {n_inner_train}", "#d9ead3")
-    box(0.36, 0.22, 0.14, 0.10, f"Val fold: {n_inner_val}", "#fff2cc")
-
-    ax.text(0.67, 0.45, "Outer CV:\nperformance estimation", fontsize=10, va="center")
-    ax.text(0.54, 0.25, "Inner CV:\nhyperparameter tuning", fontsize=10, va="center")
-
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.axis("off")
-    plt.title("Nested cross-validation with final hold-out test set")
-    plt.show()
-
 outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-visualize_nested_cv_split(X, X_train_full, X_test_final, outer_cv, inner_cv)
 
 #%%
 #-----------------------------------
@@ -155,6 +106,10 @@ param_grid = {
         'passthrough',
         FunctionTransformer(np.log1p, validate=False)
     ],
+    'smote': [
+        SMOTE(random_state=42),
+        'passthrough' 
+    ],
     'pca__n_components': [
         80, 0.93, 0.95
     ],
@@ -171,7 +126,8 @@ param_grid = {
 
 param_list = list(ParameterGrid(param_grid))
 print(f"\nTotal models: {len(param_list)}")
-print(f"Total fits (with {cv.get_n_splits()}-fold CV): {len(param_list) * cv.get_n_splits()}")
+print(f"Total fits (with {inner_cv.get_n_splits()}-fold CV): {len(param_list) * inner_cv.get_n_splits()}")
+
 
 #%%
 #-----------------------------------
@@ -248,6 +204,7 @@ print("Mean outer Balanced Accuracy:", nested_results_df["outer_bal_acc"].mean()
 print("Mean outer Average Precision:", nested_results_df["outer_ap"].mean())
 print("Mean outer fold runtime (sec):", nested_results_df["fold_time_sec"].mean())
 
+
 #%%
 #-----------------------------------
 # 6. Refit best model on full training set
@@ -269,6 +226,7 @@ print("\nBest final params from full training set:")
 print(final_grid.best_params_)
 print("Best inner CV ROC AUC on full training set:", final_grid.best_score_)
 
+
 #%%
 #-----------------------------------
 # 7. Final evaluation on untouched test set
@@ -283,6 +241,7 @@ print("Final ROC AUC:", roc_auc_score(y_test_final, y_proba_final))
 print("Final F1:", f1_score(y_test_final, y_pred_final))
 print("Final Balanced Accuracy:", balanced_accuracy_score(y_test_final, y_pred_final))
 print("Final Average Precision:", average_precision_score(y_test_final, y_proba_final))
+
 
 #%%
 #-----------------------------------
@@ -319,6 +278,7 @@ plt.title('Precision-Recall Curve (Final Test Set)')
 plt.legend(loc='lower left')
 plt.show()
 
+
 #%%
 #-----------------------------------
 # 9. Learning curve on full training set
@@ -343,4 +303,4 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-# %%
+#%%

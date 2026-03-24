@@ -187,32 +187,22 @@ print("Mean outer fold runtime (sec):", nested_results_df["fold_time_sec"].mean(
 
 #%%
 #-----------------------------------
-# 6. Refit best model on full training set
+# 6. Refit/tune best model on full training set
 #-----------------------------------
-final_grid = GridSearchCV(
-    estimator=clone(pipeline),
-    param_grid=param_grid,
-    cv=inner_cv,
-    scoring='roc_auc',
-    n_jobs=-1,
-    refit=True
-)
+best_idx = nested_results_df["outer_roc_auc"].idxmax()
+best_fold = nested_results_df.loc[best_idx]
+final_best_params = best_fold["best_params"]
 
-final_grid.fit(X_train_full, y_train_full)
-
-final_model = final_grid.best_estimator_
-
-print("\nBest final params from full training set:")
-print(final_grid.best_params_)
-print("Best inner CV ROC AUC on full training set:", final_grid.best_score_)
-
+best_model_final = clone(pipeline)
+best_model_final.set_params(**final_best_params)
+best_model_final.fit(X_train_full, y_train_full)
 
 #%%
 #-----------------------------------
 # 7. Final evaluation on untouched test set
 #-----------------------------------
-y_pred_final = final_model.predict(X_test_final)
-y_proba_final = final_model.predict_proba(X_test_final)[:, 1]
+y_pred_final = best_model_final.predict(X_test_final)
+y_proba_final = best_model_final.predict_proba(X_test_final)[:, 1]
 
 print("\nFinal test set performance")
 print(classification_report(y_test_final, y_pred_final))
@@ -278,19 +268,33 @@ plt.show()
 #-----------------------------------
 # 9. Learning curve on full training set
 #-----------------------------------
+cv_learning = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+final_model_for_lc = clone(pipeline)
+final_model_for_lc.set_params(**final_best_params)
+
 train_sizes, train_scores, val_scores = learning_curve(
-    estimator=final_model,
+    estimator=final_model_for_lc,
     X=X_train_full,
     y=y_train_full,
-    cv=outer_cv,
+    cv=cv_learning,
     scoring='roc_auc',
     n_jobs=-1,
     train_sizes=np.linspace(0.1, 1.0, 5)
 )
 
+train_mean = train_scores.mean(axis=1)
+train_std = train_scores.std(axis=1)
+val_mean = val_scores.mean(axis=1)
+val_std = val_scores.std(axis=1)
+
 plt.figure(figsize=(8, 5))
-plt.plot(train_sizes, train_scores.mean(axis=1), 'o-', label='Training ROC AUC')
-plt.plot(train_sizes, val_scores.mean(axis=1), 'o-', label='Validation ROC AUC')
+plt.plot(train_sizes, train_mean, 'o-', label='Training ROC AUC')
+plt.plot(train_sizes, val_mean, 'o-', label='Validation ROC AUC')
+
+plt.fill_between(train_sizes, train_mean - train_std, train_mean + train_std, alpha=0.2)
+plt.fill_between(train_sizes, val_mean - val_std, val_mean + val_std, alpha=0.2)
+
 plt.xlabel('Training examples')
 plt.ylabel('ROC AUC')
 plt.title('Learning Curve')
@@ -298,57 +302,4 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-#%%
-
-#-----------------------------------
-# Heatmap: mean performance
-#-----------------------------------
-
-mean_values = nested_results_df[[
-    "outer_roc_auc",
-    "outer_f1",
-    "outer_bal_acc",
-    "outer_ap"
-]].mean()
-
-mean_df = pd.DataFrame(mean_values).T
-mean_df.index = ["Logistic Regression"]
-
-plt.figure(figsize=(6, 3))
-sns.heatmap(mean_df, annot=True, fmt=".3f", cmap="viridis")
-
-plt.title("Mean nested CV performance")
-plt.yticks(rotation=0)
-plt.show()
-#-----------------------------------
-# Heatmap: mean ± std
-#-----------------------------------
-
-mean = nested_results_df[[
-    "outer_roc_auc",
-    "outer_f1",
-    "outer_bal_acc",
-    "outer_ap"
-]].mean()
-
-std = nested_results_df[[
-    "outer_roc_auc",
-    "outer_f1",
-    "outer_bal_acc",
-    "outer_ap"
-]].std()
-
-annot_df = pd.DataFrame({
-    col: [f"{mean[col]:.3f} ± {std[col]:.3f}"]
-    for col in mean.index
-})
-
-annot_df.index = ["Logistic Regression"]
-
-plt.figure(figsize=(7, 3))
-sns.heatmap(mean_df, annot=annot_df, fmt="", cmap="viridis")
-
-plt.title("Nested CV performance (mean ± std)")
-plt.yticks(rotation=0)
-plt.show()
 # %%

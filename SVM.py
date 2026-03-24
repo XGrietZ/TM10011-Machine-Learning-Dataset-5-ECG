@@ -197,32 +197,21 @@ print("Mean outer fold runtime (sec):", nested_results_df["fold_time_sec"].mean(
 
 #%%
 #-----------------------------------
-# 6. Refit best model on full training set
+# 6. Refit/tune best model on full training set
 #-----------------------------------
-final_grid = GridSearchCV(
-    estimator=clone(pipeline),
-    param_grid=param_grid,
-    cv=inner_cv,
-    scoring='roc_auc',
-    n_jobs=-1,
-    refit=True
-)
+best_idx = nested_results_df["outer_roc_auc"].idxmax()
+best_fold = nested_results_df.loc[best_idx]
+final_best_params = best_fold["best_params"]
 
-final_grid.fit(X_train_full, y_train_full)
-
-final_model = final_grid.best_estimator_
-
-print("\nBest final params from full training set:")
-print(final_grid.best_params_)
-print("Best inner CV ROC AUC on full training set:", final_grid.best_score_)
-
-
+best_model_final = clone(pipeline)
+best_model_final.set_params(**final_best_params)
+best_model_final.fit(X_train_full, y_train_full)
 #%%
 #-----------------------------------
 # 7. Final evaluation on untouched test set
 #-----------------------------------
-y_pred_final = final_model.predict(X_test_final)
-y_proba_final = final_model.predict_proba(X_test_final)[:, 1]
+y_pred_final = best_model_final.predict(X_test_final)
+y_proba_final = best_model_final.predict_proba(X_test_final)[:, 1]
 
 print("\nFinal test set performance")
 print(classification_report(y_test_final, y_pred_final))
@@ -273,19 +262,33 @@ plt.show()
 #-----------------------------------
 # 9. Learning curve on full training set
 #-----------------------------------
+cv_learning = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+final_model_for_lc = clone(pipeline)
+final_model_for_lc.set_params(**final_best_params)
+
 train_sizes, train_scores, val_scores = learning_curve(
-    estimator=final_model,
+    estimator=final_model_for_lc,
     X=X_train_full,
     y=y_train_full,
-    cv=outer_cv,
+    cv=cv_learning,
     scoring='roc_auc',
     n_jobs=-1,
     train_sizes=np.linspace(0.1, 1.0, 5)
 )
 
+train_mean = train_scores.mean(axis=1)
+train_std = train_scores.std(axis=1)
+val_mean = val_scores.mean(axis=1)
+val_std = val_scores.std(axis=1)
+
 plt.figure(figsize=(8, 5))
-plt.plot(train_sizes, train_scores.mean(axis=1), 'o-', label='Training ROC AUC')
-plt.plot(train_sizes, val_scores.mean(axis=1), 'o-', label='Validation ROC AUC')
+plt.plot(train_sizes, train_mean, 'o-', label='Training ROC AUC')
+plt.plot(train_sizes, val_mean, 'o-', label='Validation ROC AUC')
+
+plt.fill_between(train_sizes, train_mean - train_std, train_mean + train_std, alpha=0.2)
+plt.fill_between(train_sizes, val_mean - val_std, val_mean + val_std, alpha=0.2)
+
 plt.xlabel('Training examples')
 plt.ylabel('ROC AUC')
 plt.title('Learning Curve')
@@ -294,204 +297,3 @@ plt.grid(True)
 plt.show()
 
 #%%
-# Inner-loop grid: modelselectie + hyperparameters
-param_grid = [
-    {
-        'scaler': [preprocessing.RobustScaler(), 
-                   "passthrough", 
-                   preprocessing.RobustScaler(unit_variance = False), 
-                   preprocessing.RobustScaler(unit_variance = True)],
-        "features": [pca],
-        "features__n_components": [0.94,0.97],
-        "classifier": [svc],
-        "classifier__C": [0.001,0.1,1,10],
-        "classifier__gamma": ['scale','auto']
-    },
-    {
-        "features": [kbest],
-        "classifier": [svc],
-        "classifier__C": [0.001,0.1,1,10],
-        "classifier__gamma": ['scale','auto'],
-        "features__k": [20, 50, 100]
-    }
-    ]
-
-
-#%% OUD!!!!!
-
-scaler = preprocessing.RobustScaler()
-scaler.fit(X_train, y_train)
-X_scaled = scaler.transform(X_train)
-
-sm = SMOTE(sampling_strategy=1, random_state=None, k_neighbors=5)
-X_balanced, y_balanced = sm.fit_resample(X_train, y_train)
-
-#%% OUD EN NU AAN HET RUNNEN
-# pipeline = ImbPipeline('scalar', scalar, 'balancing', sm, 'feature reduction', PCA(), 'svm', svm.SVC(kernel="poly"))
-
-# sm = SMOTE(sampling_strategy=1, random_state=None, k_neighbors=5)
-# X_balanced, y_balanced = sm.fit_resample(X_train, y_train)
-
-# # classifications
-# svc = svm.SVC(kernel='linear')
-# scaler = preprocessing.RobustScaler()
-
-# pca = PCA()
-# rfe = feature_selection.RFE(estimator=svc)
-# kbest = feature_selection.SelectKBest()
-
-# pipeline = Pipeline([( "scaler" , scaler),
-#                      ("features","passthrough"),
-#                        ("classifier",svc)])
-# # import Grid Search class
-# # make lists of different parameters to check
-# ParameterGrid = {
-#   'features':[pca,rfe,kbest]
-#   }
-# # initialize
-# grid_pipeline = GridSearchCV(pipeline,ParameterGrid,cv=5)
-# # fit
-# grid_pipeline.fit(X_balanced,y_balanced)
-# grid_pipeline.best_params_
-# print("Beste feature extractor:", grid_pipeline.best_params_)
-# print("Beste score:", grid_pipeline.best_score_)
-
-
-
-# %% 
-
-
-#%%
-# soft_voting = VotingClassifier(
-#     estimators=[ ('svc', svc)],
-#     voting='soft'
-# )
-
-# soft_voting.fit(X_train, y_train)
-# y_pred_soft = soft_voting.predict(X_test_final)
-# print(f"Soft Voting Accuracy: {accuracy_score(y_test_final, y_pred_soft):.2f}")
-
-#%%
-# Modellen
-svc = svm.SVC(kernel = 'poly', probability=True, class_weight='balanced')
-
-# Feature extractors
-pca = PCA(n_components=0.94)
-kbest = SelectKBest()
-
-outer_cv = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
-inner_cv = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
-
-# Pipeline
-pipeline = Pipeline([
-    ("scaler", preprocessing.RobustScaler()),
-    ("features", "passthrough"),
-    ('smote', SMOTE(random_state=42)),
-    ("classifier", svc)   
-])
-
-# Inner-loop grid: modelselectie + hyperparameters
-param_grid = [
-    {
-        'scaler': [preprocessing.RobustScaler(), 
-                   "passthrough", 
-                   preprocessing.RobustScaler(unit_variance = False), 
-                   preprocessing.RobustScaler(unit_variance = True)],
-        "features": [pca],
-        "features__n_components": [0.94,0.97],
-        "classifier": [svc],
-        "classifier__C": [0.001,0.1,1,10],
-        "classifier__gamma": ['scale','auto']
-    },
-    {
-        "features": [kbest],
-        "classifier": [svc],
-        "classifier__C": [0.001,0.1,1,10],
-        "classifier__gamma": ['scale','auto'],
-        "features__k": [20, 50, 100]
-    }
-    ]
-
-# Inner CV
-grid = GridSearchCV(pipeline, 
-                    param_grid, 
-                    cv=inner_cv, 
-                    scoring='roc_auc',
-                    n_jobs=-1,
-                    verbose=3
-)
-
-
-# Outer CV
-nested_scores = cross_val_score(grid, X_train, y_train, cv=outer_cv)
-
-print("Nested CV scores per fold:", nested_scores)
-print("Gemiddelde nested CV score:", np.mean(nested_scores))
-
-# Fit op volledige training data om beste model te inspecteren
-grid.fit(X_train, y_train)
-print("Beste parameters:", grid.best_params_)
-print("Beste inner-loop score:", grid.best_score_)
-
-best_model = grid.best_estimator_
-y_pred = best_model.predict(X_test_final)
-y_proba = best_model.predict_proba(X_test_final)[:, 1]
-
-print("\nFinal test set performance")
-print("Confusion Matrix:\n", confusion_matrix(y_test_final, y_pred))
-print("Final ROC AUC:", roc_auc_score(y_test_final, y_proba))
-print("Final F1:", f1_score(y_test_final, y_pred))
-print("Final Balanced Accuracy:", balanced_accuracy_score(y_test_final, y_pred))
-print("Final Average Precision:", average_precision_score(y_test_final, y_proba))
-
-cm = confusion_matrix(y_test_final, y_pred)
-plt.figure(figsize=(6, 4))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
-plt.xlabel('Predicted')
-plt.ylabel('Actual')
-plt.title('Confusion Matrix (Final Test Set)')
-plt.show()
-
-fpr, tpr, _ = roc_curve(y_test_final, y_proba)
-roc_auc = auc(fpr, tpr)
-
-plt.figure(figsize=(6, 4))
-plt.plot(fpr, tpr, lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
-plt.plot([0, 1], [0, 1], linestyle='--')
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('ROC Curve (Final Test Set)')
-plt.legend(loc='lower right')
-plt.show()
-
-precision, recall, _ = precision_recall_curve(y_test_final, y_proba)
-ap = average_precision_score(y_test_final, y_proba)
-
-plt.figure(figsize=(6, 4))
-plt.plot(recall, precision, lw=2, label=f'PR curve (AP = {ap:.2f})')
-plt.xlabel('Recall')
-plt.ylabel('Precision')
-plt.title('Precision-Recall Curve (Final Test Set)')
-plt.legend(loc='lower left')
-plt.show()
-
-train_sizes, train_scores, val_scores = learning_curve(
-    estimator=best_model,
-    X=X_train,
-    y=y_train,
-    cv=outer_cv,
-    scoring='roc_auc',
-    n_jobs=-1,
-    train_sizes=np.linspace(0.1, 1.0, 5)
-)
-
-plt.figure(figsize=(8, 5))
-plt.plot(train_sizes, train_scores.mean(axis=1), 'o-', label='Training ROC AUC')
-plt.plot(train_sizes, val_scores.mean(axis=1), 'o-', label='Validation ROC AUC')
-plt.xlabel('Training examples')
-plt.ylabel('ROC AUC')
-plt.title('Learning Curve')
-plt.legend()
-plt.grid()
-plt.show()
-# %%

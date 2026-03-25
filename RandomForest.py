@@ -42,6 +42,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 
+from sklearn.datasets import load_digits
+from sklearn.naive_bayes import GaussianNB
+from sklearn.model_selection import LearningCurveDisplay
+
 from sklearn.base import clone
 from matplotlib.patches import Rectangle
 
@@ -109,8 +113,8 @@ pipeline = ImbPipeline([
 
 param_grid = {
     'log_transform': ['passthrough', FunctionTransformer(np.log1p, validate=False)],
-    'classifier__n_estimators': [100, 200, 500],
-    'classifier__max_depth': [5, 10, 20],
+    'classifier__n_estimators': [50, 100, 200],
+    'classifier__max_depth': [2, 5, 10],
     'classifier__min_samples_split': [2, 5, 10],
     'classifier__min_samples_leaf': [1, 2, 4]
 }
@@ -206,6 +210,41 @@ final_best_params = best_fold["best_params"]
 best_model_final = clone(pipeline)
 best_model_final.set_params(**final_best_params)
 best_model_final.fit(X_train_full, y_train_full)
+
+#%%
+#-----------------------------------
+# 6b. Learning curve on full training set
+#-----------------------------------
+cv_learning = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+fig, ax = plt.subplots(figsize=(8, 5))
+
+common_params = {
+    "X": X_train_full,
+    "y": y_train_full,
+    "train_sizes": np.linspace(0.1, 1.0, 5),
+    "cv": cv_learning,
+    "score_type": "both",
+    "n_jobs": -1,
+    "line_kw": {"marker": "o"},
+    "std_display_style": "fill_between",
+    "score_name": "ROC AUC",
+}
+
+LearningCurveDisplay.from_estimator(
+    best_model_final,
+    **common_params,
+    ax=ax
+)
+
+handles, labels = ax.get_legend_handles_labels()
+ax.legend(handles[:2], ["Training ROC AUC", "Validation ROC AUC"])
+ax.set_title("Learning Curve - Random Forest")
+ax.set_xlabel("Training set size")
+ax.set_ylabel("ROC AUC")
+ax.grid(True)
+plt.tight_layout()
+plt.show()
 #%%
 #-----------------------------------
 # 7. Final evaluation on untouched test set

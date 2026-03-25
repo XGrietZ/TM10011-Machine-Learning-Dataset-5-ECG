@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 from sklearn.base import clone
 from sklearn.model_selection import (
+    ParameterGrid,
     train_test_split,
     StratifiedKFold,
     GridSearchCV,
@@ -39,6 +40,11 @@ from sklearn.svm import SVC
 
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
+
+from sklearn.model_selection import RandomizedSearchCV
+from scipy.stats import randint, uniform, loguniform
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_selection import SelectFromModel
 
 #%%
 #-----------------------------------
@@ -91,30 +97,37 @@ inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 #-----------------------------------
 # 4. Pipeline + Hyperparameters
 #-----------------------------------
+
+l1_selector = SelectFromModel(
+    LogisticRegression(penalty='l1', solver='liblinear', class_weight='balanced', max_iter=100, random_state=42)
+)
+
 pipeline = ImbPipeline([
     ("scaler", RobustScaler()),
-    ("features", "passthrough"),
     ('smote', SMOTE(random_state=42)),
-    ("classifier", SVC(kernel = 'poly', probability=True))   
+    ("features", "passthrough"),
+    ("classifier", SVC(kernel='rbf', probability=True, class_weight='balanced'))
 ])
+
 
 param_grid = [
     {
-        'scaler': [ "passthrough", RobustScaler(), RobustScaler(unit_variance = True)],
-        "features": [PCA()],
-        "features__n_components": [0.94,0.97],
-        "classifier__C": [0.001,0.1,1,10],
-        "classifier__gamma": ['scale','auto']
+        "features": [SelectKBest()],
+        "features__k": [10, 50, 100],
+        "classifier__degree": [2, 4, 6],
+        "classifier__coef0": [0, 4, 6, 8],
+        "classifier__C": [0.01, 0.1, 1, 10],
+        "classifier__gamma": ["scale", "auto"]
     },
     {
-        'scaler': [ "passthrough", RobustScaler(), RobustScaler(unit_variance = True)],
-        "features": [SelectKBest()],
-        "classifier__C": [0.001,0.1,1,10],
-        "classifier__gamma": ['scale','auto'],
-        "features__k": [20, 50, 100]
+        "features": [l1_selector],
+        "features__estimator__C": [0.001, 0.01, 0.1, 1, 10],   
+        "classifier__degree": [2, 4, 6],
+        "classifier__coef0": [0, 4, 6, 8],
+        "classifier__C": [0.01, 0.1, 1, 10],
+        "classifier__gamma": ["scale", "auto"]
     }
-    ]
-
+]
 param_list = list(ParameterGrid(param_grid))
 print(f"\nTotal models: {len(param_list)}")
 print(f"Total fits (with {inner_cv.get_n_splits()}-fold CV): {len(param_list) * inner_cv.get_n_splits()}")
@@ -206,6 +219,41 @@ final_best_params = best_fold["best_params"]
 best_model_final = clone(pipeline)
 best_model_final.set_params(**final_best_params)
 best_model_final.fit(X_train_full, y_train_full)
+
+#%%
+#-----------------------------------
+# 6b. Learning curve on full training set
+#-----------------------------------
+cv_learning = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+fig, ax = plt.subplots(figsize=(8, 5))
+
+common_params = {
+    "X": X_train_full,
+    "y": y_train_full,
+    "train_sizes": np.linspace(0.1, 1.0, 5),
+    "cv": cv_learning,
+    "score_type": "both",
+    "n_jobs": -1,
+    "line_kw": {"marker": "o"},
+    "std_display_style": "fill_between",
+    "score_name": "ROC AUC",
+}
+
+LearningCurveDisplay.from_estimator(
+    best_model_final,
+    **common_params,
+    ax=ax
+)
+
+handles, labels = ax.get_legend_handles_labels()
+ax.legend(handles[:2], ["Training ROC AUC", "Validation ROC AUC"])
+ax.set_title("Learning Curve - k-nearest neighbors")
+ax.set_xlabel("Training set size")
+ax.set_ylabel("ROC AUC")
+ax.grid(True)
+plt.tight_layout()
+plt.show()
 #%%
 #-----------------------------------
 # 7. Final evaluation on untouched test set
@@ -297,3 +345,51 @@ plt.grid(True)
 plt.show()
 
 #%%
+
+svc = svm.SVC(kernel = 'rbf', probability=True, class_weight='balanced')
+
+
+pca = PCA(n_components=0.95)
+kbest = SelectKBest()
+
+outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+pipeline = Pipeline([
+    ("scaler", preprocessing.RobustScaler()),
+    ('smote', SMOTE(random_state=42)),
+    ("features", "passthrough"),
+    ("classifier", svc)
+])
+
+# Randomized search: ranges i.p.v. discrete waarden
+param_distributions = [
+    {
+        "features": [kbest],
+        "features__k": randint(10, 200),          # integer range 10–199
+        "classifier__degree": randint(2, 6),      # 2–5
+        "classifier__coef0": uniform(0, 10),      # 0–10
+        "classifier__C": loguniform(1e-2, 1e2),   # 0.01–100 log-uniform
+        "classifier__gamma": ["scale", "auto"]
+    },
+    {
+        "features": [pca],
+        "classifier__degree": randint(2, 6),
+        "classifier__coef0": uniform(0, 10),
+        "classifier__C": loguniform(1e-2, 1e2),
+        "classifier__gamma": ["scale", "auto"]
+    }
+]
+
+
+
+random_search = RandomizedSearchCV(
+    estimator=pipeline,
+    param_distributions=param_distributions,
+    n_iter=10,                     # aantal random samples
+    cv=inner_cv,
+    scoring='roc_auc',
+    n_jobs=-1,
+    verbose=3,
+    random_state=42
+)

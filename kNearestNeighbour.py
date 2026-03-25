@@ -34,6 +34,11 @@ from sklearn.metrics import (
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.base import clone
 
+from sklearn.datasets import load_digits
+from sklearn.naive_bayes import GaussianNB
+from sklearn.model_selection import LearningCurveDisplay
+
+
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
 
@@ -210,6 +215,41 @@ final_best_params = best_fold["best_params"]
 best_model_final = clone(pipeline)
 best_model_final.set_params(**final_best_params)
 best_model_final.fit(X_train_full, y_train_full)
+
+#%%
+#-----------------------------------
+# 6b. Learning curve on full training set
+#-----------------------------------
+cv_learning = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+fig, ax = plt.subplots(figsize=(8, 5))
+
+common_params = {
+    "X": X_train_full,
+    "y": y_train_full,
+    "train_sizes": np.linspace(0.1, 1.0, 5),
+    "cv": cv_learning,
+    "score_type": "both",
+    "n_jobs": -1,
+    "line_kw": {"marker": "o"},
+    "std_display_style": "fill_between",
+    "score_name": "ROC AUC",
+}
+
+LearningCurveDisplay.from_estimator(
+    best_model_final,
+    **common_params,
+    ax=ax
+)
+
+handles, labels = ax.get_legend_handles_labels()
+ax.legend(handles[:2], ["Training ROC AUC", "Validation ROC AUC"])
+ax.set_title("Learning Curve - k-nearest neighbors")
+ax.set_xlabel("Training set size")
+ax.set_ylabel("ROC AUC")
+ax.grid(True)
+plt.tight_layout()
+plt.show()
 #%%
 #-----------------------------------
 # 7. Final evaluation on untouched test set
@@ -298,4 +338,44 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
+# %%
+#%%
+#-----------------------------------
+# 6b. Learning curve op de volledige trainingsset (met optimale parameters)
+#-----------------------------------
+
+# Gebruik de best gevonden parameters van de Nested CV
+# Let op: we gebruiken een CLONE van de pipeline om vervuiling te voorkomen
+lc_model = clone(pipeline)
+lc_model.set_params(**final_best_params)
+
+cv_learning = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+plt.figure(figsize=(10, 6))
+
+# Gebruik LearningCurveDisplay voor een professionele plot
+display = LearningCurveDisplay.from_estimator(
+    lc_model,
+    X_train_full,
+    y_train_full,
+    train_sizes=np.linspace(0.1, 1.0, 5),
+    cv=cv_learning,
+    score_type="both",
+    n_jobs=-1,
+    scoring='roc_auc',      # Zorg dat dit matcht met je GridSearchCV
+    line_kw={"marker": "o"},
+    std_display_style="fill_between",
+)
+
+ax = display.ax_
+ax.set_title(f"Learning Curve - KNN (n_neighbors={final_best_params.get('classifier__n_neighbors')})")
+ax.set_xlabel("Aantal trainingssamples")
+ax.set_ylabel("ROC AUC Score")
+ax.grid(True, linestyle='--', alpha=0.7)
+
+# Verfijn de legenda voor betere leesbaarheid
+ax.legend(["Training Score", "Cross-Validation Score"], loc="lower right")
+
+plt.tight_layout()
+plt.show()
 # %%

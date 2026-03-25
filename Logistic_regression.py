@@ -32,6 +32,10 @@ from sklearn.metrics import (
     precision_recall_curve,
     average_precision_score
 )
+from sklearn.datasets import load_digits
+from sklearn.naive_bayes import GaussianNB
+from sklearn.model_selection import LearningCurveDisplay
+
 from sklearn.linear_model import LogisticRegression
 from sklearn.base import clone
 
@@ -99,7 +103,7 @@ param_grid = {
     'log_transform': ['passthrough', FunctionTransformer(np.log1p, validate=False)],
     'scaler': [ StandardScaler(), RobustScaler(),],
     'pca__n_components': [80, 0.93, 0.95],
-    'classifier__C': [0.001, 0.01, 0.1, 1, 10],
+    'classifier__C': [0.001, 0.01, 0.1, 1, 5],
     'classifier__penalty': ['l1', 'l2'],
     'classifier__solver': ['liblinear', 'saga']
 }
@@ -196,6 +200,41 @@ final_best_params = best_fold["best_params"]
 best_model_final = clone(pipeline)
 best_model_final.set_params(**final_best_params)
 best_model_final.fit(X_train_full, y_train_full)
+
+#%%
+#-----------------------------------
+# 6b. Learning curve on full training set
+#-----------------------------------
+cv_learning = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+fig, ax = plt.subplots(figsize=(8, 5))
+
+common_params = {
+    "X": X_train_full,
+    "y": y_train_full,
+    "train_sizes": np.linspace(0.1, 1.0, 5),
+    "cv": cv_learning,
+    "score_type": "both",
+    "n_jobs": -1,
+    "line_kw": {"marker": "o"},
+    "std_display_style": "fill_between",
+    "score_name": "ROC AUC",
+}
+
+LearningCurveDisplay.from_estimator(
+    best_model_final,
+    **common_params,
+    ax=ax
+)
+
+handles, labels = ax.get_legend_handles_labels()
+ax.legend(handles[:2], ["Training ROC AUC", "Validation ROC AUC"])
+ax.set_title("Learning Curve - Logistic Regression")
+ax.set_xlabel("Training set size")
+ax.set_ylabel("ROC AUC")
+ax.grid(True)
+plt.tight_layout()
+plt.show()
 
 #%%
 #-----------------------------------
@@ -302,4 +341,67 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
+# %%
+from sklearn.model_selection import LearningCurveDisplay, ShuffleSplit
+X, y = load_digits(return_X_y=True)
+naive_bayes = GaussianNB()
+
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(10, 6), sharey=True)
+
+common_params = {
+    "X": X,
+    "y": y,
+    "train_sizes": np.linspace(0.1, 1.0, 5),
+    "cv": ShuffleSplit(n_splits=50, test_size=0.2, random_state=0),
+    "score_type": "both",
+    "n_jobs": 4,
+    "line_kw": {"marker": "o"},
+    "std_display_style": "fill_between",
+    "score_name": "Accuracy",
+}
+
+for ax_idx, estimator in enumerate([naive_bayes, LogisticRegression]):
+    LearningCurveDisplay.from_estimator(estimator, **common_params, ax=ax[ax_idx])
+    handles, label = ax[ax_idx].get_legend_handles_labels()
+    ax[ax_idx].legend(handles[:2], ["Training Score", "Test Score"])
+    ax[ax_idx].set_title(f"Learning Curve for {estimator.__class__.__name__}")
+# %%
+
+#%%
+#-----------------------------------
+# 6b. Learning curve on full training set
+#-----------------------------------
+cv_learning = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+final_model_for_lc = clone(pipeline)
+final_model_for_lc.set_params(**final_best_params)
+
+fig, ax = plt.subplots(figsize=(8, 5))
+
+common_params = {
+    "X": X_train_full,
+    "y": y_train_full,
+    "train_sizes": np.linspace(0.1, 1.0, 5),
+    "cv": cv_learning,
+    "score_type": "both",
+    "n_jobs": -1,
+    "line_kw": {"marker": "o"},
+    "std_display_style": "fill_between",
+    "score_name": "ROC AUC",
+}
+
+LearningCurveDisplay.from_estimator(
+    final_model_for_lc,
+    **common_params,
+    ax=ax
+)
+
+handles, labels = ax.get_legend_handles_labels()
+ax.legend(handles[:2], ["Training ROC AUC", "Validation ROC AUC"])
+ax.set_title("Learning Curve - Logistic Regression")
+ax.set_xlabel("Training set size")
+ax.set_ylabel("ROC AUC")
+ax.grid(True)
+plt.tight_layout()
+plt.show()
 # %%

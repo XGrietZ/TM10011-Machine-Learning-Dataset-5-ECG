@@ -2,25 +2,39 @@
 # -----------------------------------
 # 0. Imports
 # -----------------------------------
+
+# Custom
 from ecg.load_data import load_data
 
+# Core
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import time
 
+# Utilities
 from tqdm import tqdm
 
-from sklearn.base import clone
+# Scikit-learn: model selection
 from sklearn.model_selection import (
-    ParameterGrid,
     train_test_split,
     StratifiedKFold,
     GridSearchCV,
-    learning_curve
+    ParameterGrid,
+    learning_curve,
+    LearningCurveDisplay
 )
 
+# Scikit-learn: preprocessing / feature selection
+from sklearn.preprocessing import RobustScaler
+from sklearn.feature_selection import SelectKBest, SelectFromModel
+
+# Scikit-learn: models
+from sklearn.svm import SVC
+from sklearn.linear_model import LogisticRegression
+
+# Scikit-learn: metrics
 from sklearn.metrics import (
     classification_report,
     confusion_matrix,
@@ -33,23 +47,12 @@ from sklearn.metrics import (
     auc
 )
 
-from sklearn.preprocessing import StandardScaler, RobustScaler
-from sklearn.decomposition import PCA
-from sklearn.feature_selection import SelectKBest
-from sklearn.svm import SVC
+# Scikit-learn: utilities
+from sklearn.base import clone
 
+# Imbalanced learning
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
-
-from sklearn.datasets import load_digits
-from sklearn.naive_bayes import GaussianNB
-from sklearn.model_selection import LearningCurveDisplay
-
-
-from sklearn.model_selection import RandomizedSearchCV
-from scipy.stats import randint, uniform, loguniform
-from sklearn.linear_model import LogisticRegression
-from sklearn.feature_selection import SelectFromModel
 
 #%%
 #-----------------------------------
@@ -119,16 +122,12 @@ param_grid = [
     {
         "features": [SelectKBest()],
         "features__k": [10, 50, 100],
-        "classifier__degree": [2, 4, 6],
-        "classifier__coef0": [0, 4, 6, 8],
         "classifier__C": [0.01, 0.1, 1, 10],
         "classifier__gamma": ["scale", "auto"]
     },
     {
         "features": [l1_selector],
         "features__estimator__C": [0.001, 0.01, 0.1, 1, 10],   
-        "classifier__degree": [2, 4, 6],
-        "classifier__coef0": [0, 4, 6, 8],
         "classifier__C": [0.01, 0.1, 1, 10],
         "classifier__gamma": ["scale", "auto"]
     }
@@ -225,6 +224,10 @@ best_model_final = clone(pipeline)
 best_model_final.set_params(**final_best_params)
 best_model_final.fit(X_train_full, y_train_full)
 
+print("\nBest hyperparameters from nested CV:")
+for param, value in final_best_params.items():
+    print(f"  {param}: {value}")
+
 #%%
 #-----------------------------------
 # 6b. Learning curve on full training set
@@ -280,8 +283,18 @@ print("Final Average Precision:", average_precision_score(y_test_final, y_proba_
 # 8. Plots for final model
 #-----------------------------------
 cm = confusion_matrix(y_test_final, y_pred_final)
+
 plt.figure(figsize=(6, 4))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
+sns.heatmap(
+    cm,
+    annot=True,
+    fmt='d',
+    cmap='Blues',
+    cbar=False,
+    xticklabels=['Normal', 'Abnormal'],
+    yticklabels=['Normal', 'Abnormal']
+)
+
 plt.xlabel('Predicted')
 plt.ylabel('Actual')
 plt.title('Confusion Matrix (Final Test Set)')

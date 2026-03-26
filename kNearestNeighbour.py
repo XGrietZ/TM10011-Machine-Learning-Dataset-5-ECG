@@ -1,25 +1,42 @@
 #%%
-#-----------------------------------
+# -----------------------------------
 # 0. Imports
-#-----------------------------------
+# -----------------------------------
+
+# Custom
 from ecg.load_data import load_data
 
+# Core
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import time
 
+# Utilities
 from tqdm import tqdm
 
-from sklearn.decomposition import PCA
+# Scikit-learn: model selection
 from sklearn.model_selection import (
     train_test_split,
     StratifiedKFold,
     GridSearchCV,
-    learning_curve
+    LearningCurveDisplay
 )
-from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler, FunctionTransformer
+
+# Scikit-learn: preprocessing / decomposition
+from sklearn.preprocessing import (
+    StandardScaler,
+    RobustScaler,
+    MinMaxScaler,
+    FunctionTransformer
+)
+from sklearn.decomposition import PCA
+
+# Scikit-learn: model
+from sklearn.neighbors import KNeighborsClassifier
+
+# Scikit-learn: metrics
 from sklearn.metrics import (
     auc,
     classification_report,
@@ -31,17 +48,13 @@ from sklearn.metrics import (
     precision_recall_curve,
     average_precision_score
 )
-from sklearn.neighbors import KNeighborsClassifier
+
+# Scikit-learn: utilities
 from sklearn.base import clone
 
-from sklearn.datasets import load_digits
-from sklearn.naive_bayes import GaussianNB
-from sklearn.model_selection import LearningCurveDisplay
-
-
+# Imbalanced learning
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
-
 #%%
 #-----------------------------------
 # 1. Load data
@@ -102,30 +115,13 @@ pipeline = ImbPipeline([
 ])
 
 param_grid = {
-    'scaler': [
-        StandardScaler(), 
-        RobustScaler(), 
-        MinMaxScaler()
-    ],
-    'log_transform': [
-        'passthrough', 
-        FunctionTransformer(np.log1p, validate=False)
-    ],
-    'pca__n_components': [
-        80, 0.93, 0.95
-    ],
-    'smote': [
-        SMOTE(random_state=42), 'passthrough'
-    ], 
-    'classifier__n_neighbors': [
-        3, 5, 7
-    ],
-    'classifier__weights': [
-        'uniform', 'distance'
-    ],
-    'classifier__metric': [
-        'euclidean', 'manhattan', 'minkowski'
-    ]
+    'scaler': [StandardScaler(), RobustScaler(), MinMaxScaler()],
+    'log_transform': ['passthrough', FunctionTransformer(np.log1p, validate=False)],
+    'pca__n_components': [80, 0.93, 0.95],
+    'smote': [SMOTE(random_state=42), 'passthrough'], 
+    'classifier__n_neighbors': [3, 5, 7],
+    'classifier__weights': ['uniform', 'distance'],
+    'classifier__metric': ['euclidean', 'manhattan']
 }
 
 #%%
@@ -216,6 +212,10 @@ best_model_final = clone(pipeline)
 best_model_final.set_params(**final_best_params)
 best_model_final.fit(X_train_full, y_train_full)
 
+print("\nBest hyperparameters from nested CV:")
+for param, value in final_best_params.items():
+    print(f"  {param}: {value}")
+
 #%%
 #-----------------------------------
 # 6b. Learning curve on full training set
@@ -270,8 +270,18 @@ print("Final Average Precision:", average_precision_score(y_test_final, y_proba_
 # 8. Plots for final model
 #-----------------------------------
 cm = confusion_matrix(y_test_final, y_pred_final)
+
 plt.figure(figsize=(6, 4))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
+sns.heatmap(
+    cm,
+    annot=True,
+    fmt='d',
+    cmap='Blues',
+    cbar=False,
+    xticklabels=['Normal', 'Abnormal'],
+    yticklabels=['Normal', 'Abnormal']
+)
+
 plt.xlabel('Predicted')
 plt.ylabel('Actual')
 plt.title('Confusion Matrix (Final Test Set)')

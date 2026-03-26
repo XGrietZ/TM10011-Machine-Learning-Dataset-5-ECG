@@ -41,6 +41,11 @@ from sklearn.svm import SVC
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
 
+from sklearn.datasets import load_digits
+from sklearn.naive_bayes import GaussianNB
+from sklearn.model_selection import LearningCurveDisplay
+
+
 from sklearn.model_selection import RandomizedSearchCV
 from scipy.stats import randint, uniform, loguniform
 from sklearn.linear_model import LogisticRegression
@@ -248,7 +253,7 @@ LearningCurveDisplay.from_estimator(
 
 handles, labels = ax.get_legend_handles_labels()
 ax.legend(handles[:2], ["Training ROC AUC", "Validation ROC AUC"])
-ax.set_title("Learning Curve - k-nearest neighbors")
+ax.set_title("Learning Curve - SVM with Best Hyperparameters")
 ax.set_xlabel("Training set size")
 ax.set_ylabel("ROC AUC")
 ax.grid(True)
@@ -305,91 +310,4 @@ plt.title('Precision-Recall Curve (Final Test Set)')
 plt.legend(loc='lower left')
 plt.show()
 
-
-#%%
-#-----------------------------------
-# 9. Learning curve on full training set
-#-----------------------------------
-cv_learning = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-
-final_model_for_lc = clone(pipeline)
-final_model_for_lc.set_params(**final_best_params)
-
-train_sizes, train_scores, val_scores = learning_curve(
-    estimator=final_model_for_lc,
-    X=X_train_full,
-    y=y_train_full,
-    cv=cv_learning,
-    scoring='roc_auc',
-    n_jobs=-1,
-    train_sizes=np.linspace(0.1, 1.0, 5)
-)
-
-train_mean = train_scores.mean(axis=1)
-train_std = train_scores.std(axis=1)
-val_mean = val_scores.mean(axis=1)
-val_std = val_scores.std(axis=1)
-
-plt.figure(figsize=(8, 5))
-plt.plot(train_sizes, train_mean, 'o-', label='Training ROC AUC')
-plt.plot(train_sizes, val_mean, 'o-', label='Validation ROC AUC')
-
-plt.fill_between(train_sizes, train_mean - train_std, train_mean + train_std, alpha=0.2)
-plt.fill_between(train_sizes, val_mean - val_std, val_mean + val_std, alpha=0.2)
-
-plt.xlabel('Training examples')
-plt.ylabel('ROC AUC')
-plt.title('Learning Curve')
-plt.legend()
-plt.grid(True)
-plt.show()
-
-#%%
-
-svc = svm.SVC(kernel = 'rbf', probability=True, class_weight='balanced')
-
-
-pca = PCA(n_components=0.95)
-kbest = SelectKBest()
-
-outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-
-pipeline = Pipeline([
-    ("scaler", preprocessing.RobustScaler()),
-    ('smote', SMOTE(random_state=42)),
-    ("features", "passthrough"),
-    ("classifier", svc)
-])
-
-# Randomized search: ranges i.p.v. discrete waarden
-param_distributions = [
-    {
-        "features": [kbest],
-        "features__k": randint(10, 200),          # integer range 10–199
-        "classifier__degree": randint(2, 6),      # 2–5
-        "classifier__coef0": uniform(0, 10),      # 0–10
-        "classifier__C": loguniform(1e-2, 1e2),   # 0.01–100 log-uniform
-        "classifier__gamma": ["scale", "auto"]
-    },
-    {
-        "features": [pca],
-        "classifier__degree": randint(2, 6),
-        "classifier__coef0": uniform(0, 10),
-        "classifier__C": loguniform(1e-2, 1e2),
-        "classifier__gamma": ["scale", "auto"]
-    }
-]
-
-
-
-random_search = RandomizedSearchCV(
-    estimator=pipeline,
-    param_distributions=param_distributions,
-    n_iter=10,                     # aantal random samples
-    cv=inner_cv,
-    scoring='roc_auc',
-    n_jobs=-1,
-    verbose=3,
-    random_state=42
-)
+# %%

@@ -274,7 +274,7 @@ print("Average Precision:", best_fold["outer_ap"])
 cv_learning = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
 # Create a figure for the learning curve
-fig, ax = plt.subplots(figsize=(8, 5))
+fig, ax = plt.subplots(figsize=(6, 4))
 
 # Define common parameters for the learning curve display
 common_params = {

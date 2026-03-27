@@ -1,25 +1,42 @@
 #%%
-#-----------------------------------
+# -----------------------------------
 # 0. Imports
-#-----------------------------------
+# -----------------------------------
+
+# Custom
 from ecg.load_data import load_data
 
+# Core
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import time
 
+# Utilities
 from tqdm import tqdm
 
-from sklearn.decomposition import PCA
+# Scikit-learn: model selection
 from sklearn.model_selection import (
     train_test_split,
     StratifiedKFold,
     GridSearchCV,
-    learning_curve
+    LearningCurveDisplay
 )
-from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler, FunctionTransformer
+
+# Scikit-learn: preprocessing / decomposition
+from sklearn.preprocessing import (
+    StandardScaler,
+    RobustScaler,
+    MinMaxScaler,
+    FunctionTransformer
+)
+from sklearn.decomposition import PCA
+
+# Scikit-learn: model
+from sklearn.neighbors import KNeighborsClassifier
+
+# Scikit-learn: metrics
 from sklearn.metrics import (
     auc,
     classification_report,
@@ -31,12 +48,13 @@ from sklearn.metrics import (
     precision_recall_curve,
     average_precision_score
 )
-from sklearn.neighbors import KNeighborsClassifier
+
+# Scikit-learn: utilities
 from sklearn.base import clone
 
+# Imbalanced learning
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
-
 #%%
 #-----------------------------------
 # 1. Load data
@@ -91,36 +109,19 @@ inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 pipeline = ImbPipeline([
     ('log_transform', 'passthrough'),
     ('scaler', RobustScaler()),
-    ('pca', PCA(n_components=0.94)),
     ('smote', SMOTE(random_state=42)),
+    ('pca', PCA(n_components=0.94)),
     ('classifier', KNeighborsClassifier())
 ])
 
 param_grid = {
-    'scaler': [
-        StandardScaler(), 
-        RobustScaler(), 
-        MinMaxScaler()
-    ],
-    'log_transform': [
-        'passthrough', 
-        FunctionTransformer(np.log1p, validate=False)
-    ],
-    'pca__n_components': [
-        80, 0.93, 0.95
-    ],
-    'smote': [
-        SMOTE(random_state=42), 'passthrough'
-    ], 
-    'classifier__n_neighbors': [
-        3, 5, 7
-    ],
-    'classifier__weights': [
-        'uniform', 'distance'
-    ],
-    'classifier__metric': [
-        'euclidean', 'manhattan', 'minkowski'
-    ]
+    'scaler': [StandardScaler(), RobustScaler(), MinMaxScaler()],
+    'log_transform': ['passthrough', FunctionTransformer(np.log1p, validate=False)],
+    'pca__n_components': [80, 0.93, 0.95],
+    'smote': [SMOTE(random_state=42), 'passthrough'], 
+    'classifier__n_neighbors': [3, 5, 7],
+    'classifier__weights': ['uniform', 'distance'],
+    'classifier__metric': ['euclidean', 'manhattan']
 }
 
 #%%
@@ -201,31 +202,60 @@ print("Mean outer fold runtime (sec):", nested_results_df["fold_time_sec"].mean(
 
 #%%
 #-----------------------------------
-# 6. Refit best model on full training set
+# 6. Refit/tune best model on full training set
 #-----------------------------------
-final_grid = GridSearchCV(
-    estimator=clone(pipeline),
-    param_grid=param_grid,
-    cv=inner_cv,
-    scoring='roc_auc',
-    n_jobs=-1,
-    refit=True
+best_idx = nested_results_df["outer_roc_auc"].idxmax()
+best_fold = nested_results_df.loc[best_idx]
+final_best_params = best_fold["best_params"]
+
+best_model_final = clone(pipeline)
+best_model_final.set_params(**final_best_params)
+best_model_final.fit(X_train_full, y_train_full)
+
+print("\nBest hyperparameters from nested CV:")
+for param, value in final_best_params.items():
+    print(f"  {param}: {value}")
+
+#%%
+#-----------------------------------
+# 6b. Learning curve on full training set
+#-----------------------------------
+cv_learning = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+fig, ax = plt.subplots(figsize=(8, 5))
+
+common_params = {
+    "X": X_train_full,
+    "y": y_train_full,
+    "train_sizes": np.linspace(0.1, 1.0, 5),
+    "cv": cv_learning,
+    "score_type": "both",
+    "n_jobs": -1,
+    "line_kw": {"marker": "o"},
+    "std_display_style": "fill_between",
+    "score_name": "ROC AUC",
+}
+
+LearningCurveDisplay.from_estimator(
+    best_model_final,
+    **common_params,
+    ax=ax
 )
 
-final_grid.fit(X_train_full, y_train_full)
-
-final_model = final_grid.best_estimator_
-
-print("\nBest final params from full training set:")
-print(final_grid.best_params_)
-print("Best inner CV ROC AUC on full training set:", final_grid.best_score_)
-
+handles, labels = ax.get_legend_handles_labels()
+ax.legend(handles[:2], ["Training ROC AUC", "Validation ROC AUC"])
+ax.set_title("Learning Curve - k-nearest neighbors")
+ax.set_xlabel("Training set size")
+ax.set_ylabel("ROC AUC")
+ax.grid(True)
+plt.tight_layout()
+plt.show()
 #%%
 #-----------------------------------
 # 7. Final evaluation on untouched test set
 #-----------------------------------
-y_pred_final = final_model.predict(X_test_final)
-y_proba_final = final_model.predict_proba(X_test_final)[:, 1]
+y_pred_final = best_model_final.predict(X_test_final)
+y_proba_final = best_model_final.predict_proba(X_test_final)[:, 1]
 
 print("\nFinal test set performance")
 print(classification_report(y_test_final, y_pred_final))
@@ -240,8 +270,18 @@ print("Final Average Precision:", average_precision_score(y_test_final, y_proba_
 # 8. Plots for final model
 #-----------------------------------
 cm = confusion_matrix(y_test_final, y_pred_final)
+
 plt.figure(figsize=(6, 4))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
+sns.heatmap(
+    cm,
+    annot=True,
+    fmt='d',
+    cmap='Blues',
+    cbar=False,
+    xticklabels=['Normal', 'Abnormal'],
+    yticklabels=['Normal', 'Abnormal']
+)
+
 plt.xlabel('Predicted')
 plt.ylabel('Actual')
 plt.title('Confusion Matrix (Final Test Set)')
@@ -268,29 +308,5 @@ plt.xlabel('Recall')
 plt.ylabel('Precision')
 plt.title('Precision-Recall Curve (Final Test Set)')
 plt.legend(loc='lower left')
-plt.show()
-
-#%%
-#-----------------------------------
-# 9. Learning curve on full training set
-#-----------------------------------
-train_sizes, train_scores, val_scores = learning_curve(
-    estimator=final_model,
-    X=X_train_full,
-    y=y_train_full,
-    cv=outer_cv,
-    scoring='roc_auc',
-    n_jobs=-1,
-    train_sizes=np.linspace(0.1, 1.0, 5)
-)
-
-plt.figure(figsize=(8, 5))
-plt.plot(train_sizes, train_scores.mean(axis=1), 'o-', label='Training ROC AUC')
-plt.plot(train_sizes, val_scores.mean(axis=1), 'o-', label='Validation ROC AUC')
-plt.xlabel('Training examples')
-plt.ylabel('ROC AUC')
-plt.title('Learning Curve')
-plt.legend()
-plt.grid(True)
 plt.show()
 # %%

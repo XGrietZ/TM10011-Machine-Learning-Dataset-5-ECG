@@ -113,10 +113,10 @@ from sklearn.metrics import accuracy_score
 
 #%%
 # Modellen
-svc = svm.SVC(kernel = 'poly', probability=True, class_weight='balanced')
+svc = svm.SVC(kernel = 'rbf', probability=True, class_weight='balanced')
 
 # Feature extractors
-pca = PCA(n_components=0.94)
+pca = PCA(n_components=0.95)
 kbest = SelectKBest()
 
 outer_cv = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
@@ -124,31 +124,21 @@ inner_cv = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
 
 # Pipeline
 pipeline = Pipeline([
-    ("scaler", preprocessing.RobustScaler()),
-    ("features", "passthrough"),
+    ("scaler", preprocessing.RobustScaler()), 
     ('smote', SMOTE(random_state=42)),
+    ("features", "passthrough"),
     ("classifier", svc)   
 ])
 
 # Inner-loop grid: modelselectie + hyperparameters
 param_grid = [
     {
-        'scaler': [preprocessing.RobustScaler(), 
-                   "passthrough", 
-                   preprocessing.RobustScaler(unit_variance = False), 
-                   preprocessing.RobustScaler(unit_variance = True)],
-        "features": [pca],
-        "features__n_components": [0.94,0.97],
-        "classifier": [svc],
-        "classifier__C": [0.001,0.1,1,10],
-        "classifier__gamma": ['scale','auto']
-    },
-    {
-        "features": [kbest],
-        "classifier": [svc],
-        "classifier__C": [0.001,0.1,1,10],
-        "classifier__gamma": ['scale','auto'],
-        "features__k": [20, 50, 100]
+        "features": [kbest, pca],
+        "features__k": [20, 50, 100],
+        "classifier__degree": [2, 3, 4, 5],
+        "classifier__coef0": [0, 1, 10],
+        "classifier__C": np.logspace(-2, 10, 13),
+        "classifier__gamma": ['scale', 'auto']
     }
     ]
 
@@ -233,5 +223,206 @@ plt.ylabel('ROC AUC')
 plt.title('Learning Curve')
 plt.legend()
 plt.grid()
+plt.show()
+# %%
+
+from sklearn.model_selection import RandomizedSearchCV
+from scipy.stats import randint, uniform, loguniform
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_selection import SelectFromModel
+
+l1_selector = SelectFromModel(
+    LogisticRegression(
+        penalty='l1',
+        solver='liblinear',
+        class_weight='balanced',
+        max_iter=500
+    )
+)
+
+svc = svm.SVC(kernel = 'rbf', probability=True, class_weight='balanced')
+
+
+pca = PCA(n_components=0.95)
+kbest = SelectKBest()
+
+outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+pipeline = Pipeline([
+    ("scaler", preprocessing.RobustScaler()),
+    ('smote', SMOTE(random_state=42)),
+    ("features", "passthrough"),
+    ("classifier", svc)
+])
+
+# Randomized search: ranges i.p.v. discrete waarden
+param_distributions = [
+    {
+        "features": [kbest],
+        "features__k": randint(10, 200),
+        "classifier__degree": randint(2, 6),
+        "classifier__coef0": uniform(0, 10),
+        "classifier__C": loguniform(1e-2, 1e2),
+        "classifier__gamma": [ "auto"]
+    },
+    # {
+    #     "features": [pca],
+    #     "classifier__degree": randint(2, 6),
+    #     "classifier__coef0": uniform(0, 10),
+    #     "classifier__C": loguniform(1e-2, 1e1),
+    #     "classifier__gamma": ["scale", "auto"]
+    # },
+    {
+        "features": [l1_selector],
+        "features__estimator__C": loguniform(1e-3, 1e2),   # L1 regularisatie
+        "classifier__degree": randint(2, 6),
+        "classifier__coef0": uniform(0, 10),
+        "classifier__C": loguniform(1e-2, 1e1),
+        "classifier__gamma": [ "auto"]
+    }
+]
+
+
+
+random_search = RandomizedSearchCV(
+    estimator=pipeline,
+    param_distributions=param_distributions,
+    n_iter=20,                     # aantal random samples
+    cv=inner_cv,
+    scoring='accuracy',
+    n_jobs=-1,
+    verbose=3,
+    random_state=42
+)
+
+#%%
+nested_scores = cross_val_score(random_search, X_train, y_train, cv=outer_cv)
+
+print("Nested CV scores per fold:", nested_scores)
+print("Gemiddelde nested CV score:", np.mean(nested_scores))
+
+# Fit op volledige training data om beste model te inspecteren
+random_search.fit(X_train, y_train)
+print("Beste parameters:", random_search.best_params_)
+print("Beste inner-loop score:", random_search.best_score_)
+
+best_model = random_search.best_estimator_
+y_pred = best_model.predict(X_test_final)
+y_proba = best_model.predict_proba(X_test_final)[:, 1]
+# %%
+print("\nFinal test set performance")
+print("Confusion Matrix:\n", confusion_matrix(y_test_final, y_pred))
+print("Final ROC AUC:", roc_auc_score(y_test_final, y_proba))
+print("Final F1:", f1_score(y_test_final, y_pred))
+print("Final Balanced Accuracy:", balanced_accuracy_score(y_test_final, y_pred))
+print("Final Average Precision:", average_precision_score(y_test_final, y_proba))
+
+cm = confusion_matrix(y_test_final, y_pred)
+plt.figure(figsize=(6, 4))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title('Confusion Matrix (Final Test Set)')
+plt.show()
+
+fpr, tpr, _ = roc_curve(y_test_final, y_proba)
+roc_auc = auc(fpr, tpr)
+
+plt.figure(figsize=(6, 4))
+plt.plot(fpr, tpr, lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
+plt.plot([0, 1], [0, 1], linestyle='--')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC Curve (Final Test Set)')
+plt.legend(loc='lower right')
+plt.show()
+
+precision, recall, _ = precision_recall_curve(y_test_final, y_proba)
+ap = average_precision_score(y_test_final, y_proba)
+
+plt.figure(figsize=(6, 4))
+plt.plot(recall, precision, lw=2, label=f'PR curve (AP = {ap:.2f})')
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Precision-Recall Curve (Final Test Set)')
+plt.legend(loc='lower left')
+plt.show()
+
+train_sizes, train_scores, val_scores = learning_curve(
+    estimator=best_model,
+    X=X_train,
+    y=y_train,
+    cv=outer_cv,
+    scoring='roc_auc',
+    n_jobs=-1,
+    train_sizes=np.linspace(0.1, 1.0, 5)
+)
+
+plt.figure(figsize=(8, 5))
+plt.plot(train_sizes, train_scores.mean(axis=1), 'o-', label='Training ROC AUC')
+plt.plot(train_sizes, val_scores.mean(axis=1), 'o-', label='Validation ROC AUC')
+plt.xlabel('Training examples')
+plt.ylabel('ROC AUC')
+plt.title('Learning Curve')
+plt.legend()
+plt.grid()
+plt.show()
+
+# %%
+from sklearn.model_selection import learning_curve
+
+best_model = random_search.best_estimator_
+
+train_sizes, train_scores, test_scores = learning_curve(
+    best_model,
+    X_train,
+    y_train,
+    cv=5,
+    scoring="accuracy",
+    n_jobs=-1,
+    train_sizes=np.linspace(0.1, 1.0, 10)
+)
+
+train_mean = train_scores.mean(axis=1)
+train_std = train_scores.std(axis=1)
+test_mean = test_scores.mean(axis=1)
+test_std = test_scores.std(axis=1)
+
+plt.figure(figsize=(8, 6))
+plt.plot(train_sizes, train_mean, label="Train score")
+plt.plot(train_sizes, test_mean, label="CV score")
+plt.fill_between(train_sizes, train_mean-train_std, train_mean+train_std, alpha=0.2)
+plt.fill_between(train_sizes, test_mean-test_std, test_mean+test_std, alpha=0.2)
+plt.title("Learning Curve")
+plt.xlabel("Training samples")
+plt.ylabel("Accuracy")
+plt.legend()
+plt.show()
+
+
+# %%
+best_model = random_search.best_estimator_
+y_pred = best_model.predict(X_train)
+y_proba = best_model.predict_proba(X_train)[:, 1]
+# %%
+cm = confusion_matrix(y_train, y_pred)
+plt.figure(figsize=(6, 4))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title('Confusion Matrix (Final Test Set)')
+plt.show()
+
+# %%
+y_pred_test = best_model.predict(X_test_final)
+y_proba_test = best_model.predict_proba(X_test_final)[:, 1]
+# %%
+cm = confusion_matrix(y_test_final, y_pred_test)
+plt.figure(figsize=(6, 4))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title('Confusion Matrix (Final Test Set)')
 plt.show()
 # %%

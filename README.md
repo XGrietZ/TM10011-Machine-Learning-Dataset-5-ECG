@@ -84,6 +84,28 @@ The models are implemented in separate scripts:
 - `Logistic_regression.py` – Logistic Regression  
 - `SVM.py` – Support Vector Machine  
 - `RandomForest.py` – Random Forest  
-- `kNearestNeighbour.py` – k-Nearest Neighbors  
+- `kNearestNeighbour.py` – k-Nearest Neighbors
+- - `Data_visualization.py` – Data exploration and visualization  
+- `load_data.py` – Utility script for loading the ECG dataset  
+ 
 
 Each script contains the full pipeline, including preprocessing, model training, and evaluation.
+
+### Data visualization
+The file `Data_visualization.py` is used for exploratory data analysis and visualization of the ECG dataset. It includes:
+- Loading and checking the dataset  
+- Inspecting class distribution  
+- Visualizing the frequency-domain representation of all 12 ECG leads for an example patient  
+- Performing a train/test split  
+- Analyzing the cumulative explained variance of PCA  
+
+This script was used to better understand the structure of the data and to support methodological choices such as dimensionality reduction.
+
+### Data loading
+The file `ecg/load_data.py` contains a helper function for loading the ECG dataset. It:
+- Locates the ECG data file automatically  
+- Checks whether the extracted CSV file is present  
+- Extracts the ZIP file if needed  
+- Loads the dataset into a pandas DataFrame  
+
+This utility ensures that the dataset can be loaded consistently across all scripts.

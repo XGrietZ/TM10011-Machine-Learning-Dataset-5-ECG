@@ -110,12 +110,16 @@ print("Test set label distribution:\n", y_test_final.value_counts())
 # 4. Explained variance analysis
 # -----------------------------------
 
+# Standardization is required before PCA
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X_train_full)
+
 # Fit PCA on standardized training data
 pca_full = PCA().fit(X_scaled)
 cum_var = np.cumsum(pca_full.explained_variance_ratio_)
 
 # Define variance threshold
-threshold = 0.935
+threshold = 0.93
 idx_94 = np.argmax(cum_var >= threshold)
 
 plt.figure(figsize=(8, 5))
@@ -124,18 +128,18 @@ plt.figure(figsize=(8, 5))
 plt.plot(
     range(idx_94 + 1),
     cum_var[:idx_94 + 1],
-    label="≤ 93,5% variance"
+    label="≤ 93% variance"
 )
 
 # Plot variance beyond threshold (red region)
 plt.plot(
     range(idx_94, len(cum_var)),
     cum_var[idx_94:],
-    label="> 93,5% variance"
+    label="> 93% variance"
 )
 
 # Threshold line
-plt.axhline(threshold, linestyle='--', label="93,5% threshold")
+plt.axhline(threshold, linestyle='--', label="93% threshold")
 
 # Vertical line at cutoff
 plt.axvline(idx_94, linestyle=':', alpha=0.7)

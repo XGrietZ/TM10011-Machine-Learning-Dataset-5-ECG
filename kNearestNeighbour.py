@@ -115,7 +115,7 @@ pipeline = ImbPipeline([
     ('log_transform', 'passthrough'),
     ('scaler', RobustScaler()),
     ('smote', SMOTE(random_state=42)),
-    ('pca', PCA(n_components=0.94)),
+    ('pca', PCA(n_components=0.93)),
     ('classifier', KNeighborsClassifier())
 ])
 

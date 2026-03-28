@@ -13,24 +13,23 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
 #%%
-# -----------------------------------
-# 1. Load and preprocess data
-# -----------------------------------
+#-----------------------------------
+# 1. Load data
+#-----------------------------------
+
 data = load_data()
+print(f'The number of samples: {len(data.index)}')
+print(f'The number of columns: {len(data.columns)}')
 
-print(f"Number of samples: {len(data.index)}")
-print(f"Number of columns: {len(data.columns)}")
-
-# Convert to DataFrame for consistency
 df = pd.DataFrame(data)
 
-# Remove unwanted index column if present
+# Remove missing value column if it exists
 if "Unnamed: 0" in df.columns:
     df = df.drop(columns=["Unnamed: 0"])
 
-# Ensure label column exists
+# Check if the expected 'label' column exists in the DataFrame, if not raise an error
 if "label" not in df.columns:
-    raise ValueError("Expected a column named 'label' in the dataset.")
+    raise ValueError("Expected a column named 'label' in the CSV.")
 
 # Separate features and labels
 X = df.drop(columns=["label"])

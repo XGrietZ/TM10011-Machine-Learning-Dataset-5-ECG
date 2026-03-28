@@ -85,9 +85,6 @@ The models are implemented in separate scripts:
 - `SVM.py` – Support Vector Machine  
 - `RandomForest.py` – Random Forest  
 - `kNearestNeighbour.py` – k-Nearest Neighbors
-- - `Data_visualization.py` – Data exploration and visualization  
-- `load_data.py` – Utility script for loading the ECG dataset  
- 
 
 Each script contains the full pipeline, including preprocessing, model training, and evaluation.
 

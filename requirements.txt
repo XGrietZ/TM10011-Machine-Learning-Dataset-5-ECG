@@ -1,6 +1,7 @@
-scikit-learn
-matplotlib
-torch
-pandas
 numpy
+pandas
+matplotlib
 seaborn
+scikit-learn
+imbalanced-learn
+tqdm
